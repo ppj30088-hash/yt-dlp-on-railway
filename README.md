@@ -2,7 +2,7 @@
 
 A Telegram bot that downloads videos from any site supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp) (YouTube, Instagram, Twitter/X, TikTok, and hundreds more) and sends them back to the user. If the file exceeds Telegram's 50 MB bot limit, the bot automatically tries lower quality until it fits.
 
-## Deploy on Railway (No Template Needed)
+## Deploy on Railway
 
 1. **Fork this repository** (top-right corner of this page)
 2. Go to [Railway Dashboard](https://railway.app/dashboard)
@@ -10,7 +10,6 @@ A Telegram bot that downloads videos from any site supported by [yt-dlp](https:/
 4. Select **your forked repository**
 5. Set **Environment Variables**:
    - `TELEGRAM_BOT_TOKEN` = Your bot token from [@BotFather](https://t.me/BotFather) **(Required)**
-   - `MAX_TELEGRAM_MB` = Maximum file size in MB (default: 50)
 6. Click **Deploy**
 
 ### How to set your bot token after forking:

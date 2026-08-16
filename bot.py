@@ -27,7 +27,7 @@ if not BOT_TOKEN:
     )
 
 # سقف حجم فایل قابل ارسال توسط بات‌های عادی تلگرام (مگابایت)
-MAX_TELEGRAM_MB = int(os.environ.get("MAX_TELEGRAM_MB", "50"))
+MAX_TELEGRAM_MB = 50
 MAX_TELEGRAM_BYTES = MAX_TELEGRAM_MB * 1024 * 1024
 
 # کیفیت‌هایی که برای کوچک کردن فایل امتحان می‌کنیم (از بهترین به بدترین)
@@ -46,7 +46,6 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
-
 
 # ----------------------------------------------------------------------------
 # منطق دانلود
