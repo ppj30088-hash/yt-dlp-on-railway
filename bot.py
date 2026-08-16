@@ -125,16 +125,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text = update.message.text or ""
-    match = URL_REGEX.search(text)
-    if not match:
-        await update.message.reply_text(
-            "یه لینک معتبر بفرست (باید با http:// یا https:// شروع بشه)."
-        )
+    msg = update.message
+    if not msg or not msg.text:
         return
 
-    url = match.group(0)
-    status_msg = await update.message.reply_text("⏳ در حال دانلود... ممکنه کمی طول بکشه.")
+    text = msg.text.strip()
+    chat_type = msg.chat.type if msg.chat else "private"
+    is_group = chat_type in ("group", "supergroup")
+
+    match = URL_REGEX.search(text)
+
+    # در گروه‌ها: فقط روی لینک مستقیم یا "هرمس + لینک" واکنش نشان بده
+    if is_group:
+        if "هرمس" in text:
+            if match:
+                url = match.group(0).rstrip(".,)")
+                await process_url(update, url)
+            # اگر "هرمس" هست ولی لینک نیست -> سکوت (بدون پیام خطا)
+        elif match:
+            # لینک مستقیم بدون "هرمس"
+            url = match.group(0).rstrip(".,)")
+            await process_url(update, url)
+        # بقیه پیام‌های گروه -> سکوت کامل
+        return
+
+    # در پیوی: رفتار کامل (روی همه متن‌ها واکنش نشان بده)
+    if match:
+        url = match.group(0)
+        await process_url(update, url)
+    else:
+        await msg.reply_text(
+            "یه لینک معتبر بفرست (باید با http:// یا https:// شروع بشه)."
+        )
+
+
+async def process_url(update: Update, url: str) -> None:
+    msg = update.message
+    status_msg = await msg.reply_text("⏳ در حال دانلود... ممکنه کمی طول بکشه.")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         filepath, status = download_best_fitting(url, tmp_dir)
@@ -153,7 +180,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         try:
             await status_msg.edit_text("📤 در حال آپلود به تلگرام...")
             with open(filepath, "rb") as f:
-                await update.message.reply_video(
+                await msg.reply_video(
                     video=f,
                     caption=os.path.basename(filepath),
                     supports_streaming=True,
