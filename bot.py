@@ -52,6 +52,11 @@ logger = logging.getLogger(__name__)
 # منطق دانلود
 # ----------------------------------------------------------------------------
 
+def is_youtube_url(url: str) -> bool:
+    """بررسی آیا URL مربوط به یوتیوب است."""
+    return "youtube.com" in url or "youtu.be" in url
+
+
 def download_with_format(url: str, out_dir: str, fmt: str) -> str | None:
     """با یک فرمت مشخص دانلود می‌کند و مسیر فایل نهایی را برمی‌گرداند."""
     output_template = os.path.join(out_dir, "%(id)s.%(ext)s")
@@ -68,6 +73,17 @@ def download_with_format(url: str, out_dir: str, fmt: str) -> str | None:
             "ffmpeg": ["-movflags", "+faststart"]
         },
     }
+    # برای یوتیوب: از Android player client استفاده کن (بدون کوکی، بدون چالش JS، ۳۶۰p مطمئن)
+    if is_youtube_url(url):
+        ydl_opts["extractor_args"] = {
+            "youtube": {
+                "player_client": ["android"]
+            }
+        }
+        # Android client فقط فرمت ۱۸ (۳۶۰p MP4 pre-merged) برمی‌گرداند
+        # پس فرمت را محدود کن تا از bestvideo+ba پرهیز کنه که موجود نیست
+        ydl_opts["format"] = "best[height<=360]"
+    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = ydl.prepare_filename(info)
@@ -88,7 +104,7 @@ def generate_thumbnail(video_path: str, out_dir: str) -> str | None:
             [
                 "ffmpeg", "-y", "-i", video_path,
                 "-ss", "00:00:01", "-vframes", "1",
-                "-vf", "scale=320:-1",  # حداکثر عرض 320px برای تلگرام
+                "-vf", "scale=320:-1",  # حداکثر عرض ۳۲۰px برای تلگرام
                 thumb_path
             ],
             capture_output=True, timeout=30, check=True
@@ -182,7 +198,7 @@ async def process_url(update: Update, url: str) -> None:
 
         if status == "even_lowest_quality_too_big":
             await status_msg.edit_text(
-                f"⚠️ حتی با پایین‌ترین کیفیت هم فایل بزرگ‌تر از {MAX_TELEGRAM_MB} "
+                f"⚠️ حتی با پایین‌ترین کیفیتین کیفیت هم فایل بزرگ‌تر از {MAX_TELEGRAM_MB} "
                 "مگابایته و نمی‌تونم بفرستمش."
             )
             return
