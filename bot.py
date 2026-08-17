@@ -40,10 +40,10 @@ QUALITY_LADDER = [
     "worst",
 ]
 
-# کیفیت‌ها برای یوتیوب (Android client فقط فرمت ۱۸/۳۶۰p MP4 pre-merged برمی‌گرداند)
+# کیفیت‌ها برای یوتیوب (Android client فقط فرمت ۱۸ - ۳۶۰p MP4 pre-merged برمی‌گرداند)
 YOUTUBE_QUALITY_LADDER = [
-    "best[height<=360]",   # فرمت ۱۸ - ۳۶۰p MP4 (video+audio merged)
-    "worst",               # fallback
+    "18",   # فرمت ۱۸ - ۳۶۰p MP4 (video+audio merged, android client)
+    "worst", # fallback
 ]
 
 URL_REGEX = re.compile(r"https?://\S+")
