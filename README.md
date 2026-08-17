@@ -1,7 +1,5 @@
 # Telegram yt-dlp Downloader Bot
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/RYOBU9)
-
 A Telegram bot that downloads videos from any site supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp) (YouTube, Instagram, Twitter/X, TikTok, and hundreds more) and sends them back to the user. If the file exceeds Telegram's 50 MB bot limit, the bot automatically tries lower quality until it fits.
 
 ## Deploy on Railway
