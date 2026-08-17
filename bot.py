@@ -31,13 +31,19 @@ if not BOT_TOKEN:
 MAX_TELEGRAM_MB = 50
 MAX_TELEGRAM_BYTES = MAX_TELEGRAM_MB * 1024 * 1024
 
-# کیفیت‌هایی که برای کوچک کردن فایل امتحان می‌کنیم (از بهترین به بدترین)
+# کیفیت‌ها برای سایت‌های معمولی (از بهترین به بدترین)
 QUALITY_LADDER = [
     "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
     "bestvideo[height<=720]+bestaudio/best[height<=720]",
     "bestvideo[height<=480]+bestaudio/best[height<=480]",
     "bestvideo[height<=360]+bestaudio/best[height<=360]",
     "worst",
+]
+
+# کیفیت‌ها برای یوتیوب (Android client فقط فرمت ۱۸/۳۶۰p MP4 pre-merged برمی‌گرداند)
+YOUTUBE_QUALITY_LADDER = [
+    "best[height<=360]",   # فرمت ۱۸ - ۳۶۰p MP4 (video+audio merged)
+    "worst",               # fallback
 ]
 
 URL_REGEX = re.compile(r"https?://\S+")
@@ -49,7 +55,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------------------
-# منطق دانلود
+# توابع کمکی
 # ----------------------------------------------------------------------------
 
 def is_youtube_url(url: str) -> bool:
@@ -73,16 +79,13 @@ def download_with_format(url: str, out_dir: str, fmt: str) -> str | None:
             "ffmpeg": ["-movflags", "+faststart"]
         },
     }
-    # برای یوتیوب: از Android player client استفاده کن (بدون کوکی، بدون چالش JS، ۳۶۰p مطمئن)
+    # برای یوتیوب: از Android player client استفاده کن (بدون کوکی، بدون چالش JS)
     if is_youtube_url(url):
         ydl_opts["extractor_args"] = {
             "youtube": {
                 "player_client": ["android"]
             }
         }
-        # Android client فقط فرمت ۱۸ (۳۶۰p MP4 pre-merged) برمی‌گرداند
-        # پس فرمت را محدود کن تا از bestvideo+ba پرهیز کنه که موجود نیست
-        ydl_opts["format"] = "best[height<=360]"
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -122,8 +125,11 @@ def download_best_fitting(url: str, out_dir: str) -> tuple[str | None, str]:
     فایل را حذف کرده و با کیفیت پایین‌تر دوباره امتحان می‌کند.
     خروجی: (مسیر فایل یا None، پیام وضعیت)
     """
+    # انتخاب ladder مناسب
+    ladder = YOUTUBE_QUALITY_LADDER if is_youtube_url(url) else QUALITY_LADDER
+    
     last_error = ""
-    for fmt in QUALITY_LADDER:
+    for fmt in ladder:
         try:
             filepath = download_with_format(url, out_dir, fmt)
         except Exception as e:  # noqa: BLE001
@@ -198,7 +204,7 @@ async def process_url(update: Update, url: str) -> None:
 
         if status == "even_lowest_quality_too_big":
             await status_msg.edit_text(
-                f"⚠️ حتی با پایین‌ترین کیفیتین کیفیت هم فایل بزرگ‌تر از {MAX_TELEGRAM_MB} "
+                f"⚠️ حتی با پایین‌ترین کیفیت هم فایل بزرگ‌تر از {MAX_TELEGRAM_MB} "
                 "مگابایته و نمی‌تونم بفرستمش."
             )
             return
