@@ -9,7 +9,7 @@
 ## دیپلوی روی Railway
 
 ### روش ۱: یک کلیک (Template)
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/RYOBU9)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/jiIFbv)
 
 روی دکمه بالا کلیک کنید، `TELEGRAM_BOT_TOKEN` خودتان را وارد کنید، بقیه را Railway انجام می‌دهد.
 

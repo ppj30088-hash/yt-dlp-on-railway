@@ -8,7 +8,7 @@ A Telegram bot that downloads videos from any site supported by [yt-dlp](https:/
 ## Deploy on Railway
 
 ### Option 1: One-Click Deploy (Template)
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/RYOBU9)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/jiIFbv)
 
 Click the button above, enter your `TELEGRAM_BOT_TOKEN`, and Railway handles the rest.
 
