@@ -2,6 +2,8 @@
 
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/RYOBU9)
 
+[English](README.md) | [فارسی](README.fa.md)
+
 بات تلگرامی که ویدیو را از هر سایتی که [yt-dlp](https://github.com/yt-dlp/yt-dlp) پشتیبانی می‌کند (یوتیوب، اینستاگرام، توییتر/X، تیک‌تاک و صدها سایت دیگر) دانلود کرده و برای کاربر ارسال می‌کند. اگر حجم فایل از محدودیت ۵۰ مگابایتی تلگرام بیشتر باشد، بات خودکار کیفیت را پایین می‌آورد تا در حد مجاز شود.
 
 ## دیپلوی روی Railway
