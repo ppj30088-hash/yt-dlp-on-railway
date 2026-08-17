@@ -1,6 +1,5 @@
 # Telegram yt-dlp Downloader Bot
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/RYOBU9)
 
 [English](README.md) | [فارسی](README.fa.md)
 
