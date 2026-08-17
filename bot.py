@@ -3,6 +3,7 @@ import os
 import re
 import tempfile
 import shutil
+import subprocess
 
 import yt_dlp
 from telegram import Update
@@ -62,6 +63,10 @@ def download_with_format(url: str, out_dir: str, fmt: str) -> str | None:
         "quiet": True,
         "no_warnings": True,
         "restrictfilenames": True,
+        # faststart: moov atom اول فایل برای streaming لحظه‌ای
+        "postprocessor_args": {
+            "ffmpeg": ["-movflags", "+faststart"]
+        },
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -73,6 +78,26 @@ def download_with_format(url: str, out_dir: str, fmt: str) -> str | None:
             if os.path.exists(candidate):
                 return candidate
         return filename if os.path.exists(filename) else None
+
+
+def generate_thumbnail(video_path: str, out_dir: str) -> str | None:
+    """استخراج فریم اول ویدیو به عنوان thumbnail با ffmpeg."""
+    thumb_path = os.path.join(out_dir, "thumb.jpg")
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", video_path,
+                "-ss", "00:00:01", "-vframes", "1",
+                "-vf", "scale=320:-1",  # حداکثر عرض 320px برای تلگرام
+                thumb_path
+            ],
+            capture_output=True, timeout=30, check=True
+        )
+        if os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
+            return thumb_path
+    except Exception as e:
+        logger.warning("Failed to generate thumbnail: %s", e)
+    return None
 
 
 def download_best_fitting(url: str, out_dir: str) -> tuple[str | None, str]:
@@ -177,21 +202,35 @@ async def process_url(update: Update, url: str) -> None:
             await status_msg.edit_text(f"❌ نشد دانلودش کنم.\n{status}")
             return
 
+        # Generate thumbnail
+        thumb_path = generate_thumbnail(filepath, tmp_dir)
+        thumb_file = None
+
         try:
             await status_msg.edit_text("📤 در حال آپلود به تلگرام...")
             with open(filepath, "rb") as f:
-                await msg.reply_video(
-                    video=f,
-                    caption=os.path.basename(filepath),
-                    supports_streaming=True,
-                    read_timeout=120,
-                    write_timeout=120,
-                    connect_timeout=60,
-                )
+                kwargs = {
+                    "video": f,
+                    "caption": os.path.basename(filepath),
+                    "supports_streaming": True,
+                    "read_timeout": 120,
+                    "write_timeout": 120,
+                    "connect_timeout": 60,
+                }
+                if thumb_path:
+                    thumb_file = open(thumb_path, "rb")
+                    kwargs["thumbnail"] = thumb_file
+                await msg.reply_video(**kwargs)
             await status_msg.delete()
         except Exception as e:  # noqa: BLE001
             logger.exception("ارسال فایل شکست خورد")
             await status_msg.edit_text(f"❌ آپلود فایل شکست خورد: {e}")
+        finally:
+            if thumb_file:
+                try:
+                    thumb_file.close()
+                except Exception:
+                    pass
 
 
 def main() -> None:
