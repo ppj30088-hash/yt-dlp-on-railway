@@ -155,33 +155,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     text = msg.text.strip()
-    chat_type = msg.chat.type if msg.chat else "private"
-    is_group = chat_type in ("group", "supergroup")
-
     match = URL_REGEX.search(text)
 
-    # در گروه‌ها: فقط روی لینک مستقیم یا "هرمس + لینک" واکنش نشان بده
-    if is_group:
-        if "هرمس" in text:
-            if match:
-                url = match.group(0).rstrip(".,)")
-                await process_url(update, url)
-            # اگر "هرمس" هست ولی لینک نیست -> سکوت (بدون پیام خطا)
-        elif match:
-            # لینک مستقیم بدون "هرمس"
-            url = match.group(0).rstrip(".,)")
-            await process_url(update, url)
-        # بقیه پیام‌های گروه -> سکوت کامل
+    if not match:
+        # در پیوی: اگر لینک نیست خطا بده
+        # در گروه: سکوت کامل
+        chat_type = msg.chat.type if msg.chat else "private"
+        is_private = chat_type == "private"
+        if is_private:
+            await msg.reply_text(
+                "یه لینک معتبر بفرست (باید با http:// یا https:// شروع بشه)."
+            )
         return
 
-    # در پیوی: رفتار کامل (روی همه متن‌ها واکنش نشان بده)
-    if match:
-        url = match.group(0)
-        await process_url(update, url)
-    else:
-        await msg.reply_text(
-            "یه لینک معتبر بفرست (باید با http:// یا https:// شروع بشه)."
-        )
+    # لینک پیدا شده - در هر چتی (گروه یا پیوی) پردازش کن
+    url = match.group(0).rstrip(".,)")
+    await process_url(update, url)
 
 
 async def process_url(update: Update, url: str) -> None:
