@@ -1,9 +1,17 @@
 # Telegram yt-dlp Downloader Bot
 
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/RYOBU9)
+
 A Telegram bot that downloads videos from any site supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp) (YouTube, Instagram, Twitter/X, TikTok, and hundreds more) and sends them back to the user. If the file exceeds Telegram's 50 MB bot limit, the bot automatically tries lower quality until it fits.
 
 ## Deploy on Railway
 
+### Option 1: One-Click Deploy (Template)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/deploy/RYOBU9)
+
+Click the button above, enter your `TELEGRAM_BOT_TOKEN`, and Railway handles the rest.
+
+### Option 2: Fork + Deploy
 1. **Fork this repository** (top-right corner of this page)
 2. Go to [Railway Dashboard](https://railway.app/dashboard)
 3. **New Project** → **Deploy from GitHub repo**
@@ -50,6 +58,7 @@ tg-ytdlp-bot/
 ├── Dockerfile       # Includes ffmpeg for video/audio merging
 ├── railway.json     # Railway build config (Dockerfile)
 ├── .env.example     # Environment variables template
+├── logo.svg         # Template icon
 └── README.md
 ```
 
