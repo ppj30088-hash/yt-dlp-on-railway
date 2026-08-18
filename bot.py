@@ -197,6 +197,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def process_url(update: Update, url: str) -> None:
     msg = update.message
+    chat_type = msg.chat.type if msg.chat else "private"
+    is_group = chat_type in ("group", "supergroup")
+
+    # Pre-check: validate URL is actually supported by yt-dlp
+    # This filters out Telegram proxy links, unsupported platforms, etc.
+    try:
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if not info:
+                if is_group:
+                    return  # Silent in groups
+                raise ValueError("Unsupported URL")
+    except yt_dlp.utils.UnsupportedError:
+        if is_group:
+            return  # Silent in groups for unsupported platforms
+        raise
+    except Exception as e:
+        # Network errors, geo-block, auth required, etc.
+        if is_group:
+            return  # Silent in groups for any extraction error
+        raise
+
+    # Proceed with actual download
     status_msg = await msg.reply_text("⏳ در حال دانلود... ممکنه کمی طول بکشه.")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
