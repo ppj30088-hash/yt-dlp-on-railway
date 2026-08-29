@@ -1,13 +1,13 @@
 import logging
 import os
 import re
-import tempfile
 import shutil
+import tempfile
 import subprocess
 
 import yt_dlp
 from telegram import Update
-from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -30,6 +30,9 @@ if not BOT_TOKEN:
 # سقف حجم فایل قابل ارسال توسط بات‌های عادی تلگرام (مگابایت)
 MAX_TELEGRAM_MB = 50
 MAX_TELEGRAM_BYTES = MAX_TELEGRAM_MB * 1024 * 1024
+
+# آیا aria2c روی سیستم نصبه؟ (دانلود چندریسمانی و خیلی سریع‌تر)
+ARIA2C_AVAILABLE = shutil.which("aria2c") is not None
 
 # کیفیت‌ها برای سایت‌های معمولی (از بهترین به بدترین)
 QUALITY_LADDER = [
@@ -63,10 +66,10 @@ def is_youtube_url(url: str) -> bool:
     return "youtube.com" in url or "youtu.be" in url
 
 
-def download_with_format(url: str, out_dir: str, fmt: str) -> str | None:
-    """با یک فرمت مشخص دانلود می‌کند و مسیر فایل نهایی را برمی‌گرداند."""
+def _base_ydl_opts(url: str, out_dir: str, fmt: str) -> dict:
+    """تنظیمات مشترک yt-dlp با گزینه‌های سرعت بالا."""
     output_template = os.path.join(out_dir, "%(id)s.%(ext)s")
-    ydl_opts = {
+    opts = {
         "format": fmt,
         "outtmpl": output_template,
         "merge_output_format": "mp4",
@@ -74,19 +77,44 @@ def download_with_format(url: str, out_dir: str, fmt: str) -> str | None:
         "quiet": True,
         "no_warnings": True,
         "restrictfilenames": True,
-        # faststart: moov atom اول فایل برای streaming لحظه‌ای
         "postprocessor_args": {
             "ffmpeg": ["-movflags", "+faststart"]
         },
+        # --- بهینه‌سازی‌های سرعت ---
+        # دانلود چند فرگمنت به‌صورت هم‌زمان (برای HLS/DASH که فایل تکه‌تکه است)
+        "concurrent_fragment_downloads": 8,
+        # درخواست‌های شبکه رو سریع timeout بده و retry کن، به جای هنگ کردن
+        "socket_timeout": 15,
+        "retries": 3,
+        "fragment_retries": 3,
+        "extractor_retries": 1,
+        # فایل‌های زیرنویس/thumbnail اضافه دانلود نکن - سرعت بیشتر
+        "writesubtitles": False,
+        "writethumbnail": False,
+        "writeinfojson": False,
+        # از cache دیسک برای extractor استفاده نکن (کمی سریع‌تر برای اجرای تک‌باره)
+        "cachedir": False,
     }
+    # اگر aria2c نصب باشه، به‌جای دانلودر داخلی ازش استفاده کن (چندریسمانی و بسیار سریع‌تر)
+    if ARIA2C_AVAILABLE:
+        opts["external_downloader"] = "aria2c"
+        opts["external_downloader_args"] = {
+            "aria2c": ["-x", "16", "-s", "16", "-k", "1M"]
+        }
     # برای یوتیوب: از Android player client استفاده کن (بدون کوکی، بدون چالش JS)
     if is_youtube_url(url):
-        ydl_opts["extractor_args"] = {
+        opts["extractor_args"] = {
             "youtube": {
                 "player_client": ["android"]
             }
         }
-    
+    return opts
+
+
+def download_with_format(url: str, out_dir: str, fmt: str) -> str | None:
+    """با یک فرمت مشخص دانلود می‌کند و مسیر فایل نهایی را برمی‌گرداند."""
+    ydl_opts = _base_ydl_opts(url, out_dir, fmt)
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = ydl.prepare_filename(info)
@@ -123,15 +151,19 @@ def download_best_fitting(url: str, out_dir: str) -> tuple[str | None, str]:
     """
     از بهترین کیفیت شروع می‌کند؛ اگر حجم فایل از سقف تلگرام بیشتر بود،
     فایل را حذف کرده و با کیفیت پایین‌تر دوباره امتحان می‌کند.
+    فقط یک بار extract+download انجام می‌شود (بدون pre-check جداگانه) تا سریع‌تر باشد.
     خروجی: (مسیر فایل یا None، پیام وضعیت)
+    وضعیت‌های خاص: "unsupported" برای لینک‌های پشتیبانی‌نشده.
     """
-    # انتخاب ladder مناسب
     ladder = YOUTUBE_QUALITY_LADDER if is_youtube_url(url) else QUALITY_LADDER
-    
+
     last_error = ""
     for fmt in ladder:
         try:
             filepath = download_with_format(url, out_dir, fmt)
+        except yt_dlp.utils.UnsupportedError as e:
+            # لینک اصلا پشتیبانی نمی‌شه، امتحان فرمت‌های دیگه فایده‌ای نداره
+            return None, "unsupported"
         except Exception as e:  # noqa: BLE001
             last_error = str(e)
             logger.warning("دانلود با فرمت %s شکست خورد: %s", fmt, e)
@@ -155,6 +187,45 @@ def download_best_fitting(url: str, out_dir: str) -> tuple[str | None, str]:
     if last_error:
         return None, f"خطا در دانلود: {last_error}"
     return None, "even_lowest_quality_too_big"
+
+
+# ----------------------------------------------------------------------------
+# کمکی برای ارسال پیام حتی اگر پیام اصلی کاربر پاک شده باشد
+# ----------------------------------------------------------------------------
+
+def _is_reply_target_missing(exc: BadRequest) -> bool:
+    text = str(exc).lower()
+    return (
+        "replied message not found" in text
+        or "message to reply not found" in text
+        or "message to be replied not found" in text
+        or "reply message not found" in text
+    )
+
+
+async def safe_reply_text(msg, chat_id: int, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """reply_text امن: اگر پیام اصلی پاک شده باشه، به‌جاش پیام معمولی می‌فرسته."""
+    try:
+        return await msg.reply_text(text)
+    except BadRequest as e:
+        if _is_reply_target_missing(e):
+            return await context.bot.send_message(chat_id=chat_id, text=text)
+        raise
+
+
+async def safe_reply_video(msg, chat_id: int, context: ContextTypes.DEFAULT_TYPE, **kwargs):
+    """reply_video امن: اگر پیام اصلی پاک شده باشه، ویدیو رو مستقیم به چت می‌فرسته."""
+    try:
+        return await msg.reply_video(**kwargs)
+    except BadRequest as e:
+        if _is_reply_target_missing(e):
+            # فایل ارسال‌شده قبلاً خونده شده، باید از اول pointer رو برگردونیم
+            if "video" in kwargs and hasattr(kwargs["video"], "seek"):
+                kwargs["video"].seek(0)
+            if "thumbnail" in kwargs and hasattr(kwargs["thumbnail"], "seek"):
+                kwargs["thumbnail"].seek(0)
+            return await context.bot.send_video(chat_id=chat_id, **kwargs)
+        raise
 
 
 # ----------------------------------------------------------------------------
@@ -192,38 +263,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # لینک پیدا شده - در هر چتی (گروه یا پیوی) پردازش کن
     url = match.group(0).rstrip(".,)")
-    await process_url(update, url)
+    await process_url(update, context, url)
 
 
-async def process_url(update: Update, url: str) -> None:
+async def process_url(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str) -> None:
     msg = update.message
+    chat_id = msg.chat_id
     chat_type = msg.chat.type if msg.chat else "private"
     is_group = chat_type in ("group", "supergroup")
 
-    # Pre-check: validate URL is actually supported by yt-dlp
-    # This filters out Telegram proxy links, unsupported platforms, etc.
-    try:
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if not info:
-                if is_group:
-                    return  # Silent in groups
-                raise ValueError("Unsupported URL")
-    except yt_dlp.utils.UnsupportedError:
-        if is_group:
-            return  # Silent in groups for unsupported platforms
-        raise
-    except Exception as e:
-        # Network errors, geo-block, auth required, etc.
-        if is_group:
-            return  # Silent in groups for any extraction error
-        raise
+    # توجه: دیگه pre-check جداگانه (extract_info با download=False) نداریم.
+    # همون یک بار extract+download داخل download_best_fitting انجام میشه،
+    # که تقریبا نصف زمان استخراج اطلاعات لینک رو ذخیره می‌کنه.
 
-    # Proceed with actual download
-    status_msg = await msg.reply_text("⏳ در حال دانلود... ممکنه کمی طول بکشه.")
+    status_msg = await safe_reply_text(msg, chat_id, context, "⏳ در حال دانلود... ممکنه کمی طول بکشه.")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         filepath, status = download_best_fitting(url, tmp_dir)
+
+        if status == "unsupported":
+            if is_group:
+                await status_msg.delete()
+                return  # سکوت کامل در گروه برای لینک‌های پشتیبانی‌نشده
+            await status_msg.edit_text("❌ این لینک پشتیبانی نمی‌شه.")
+            return
 
         if status == "even_lowest_quality_too_big":
             await status_msg.edit_text(
@@ -233,6 +296,9 @@ async def process_url(update: Update, url: str) -> None:
             return
 
         if not filepath:
+            if is_group:
+                await status_msg.delete()
+                return  # سکوت کامل در گروه برای خطاهای دیگه (شبکه، geo-block و ...)
             await status_msg.edit_text(f"❌ نشد دانلودش کنم.\n{status}")
             return
 
@@ -254,11 +320,19 @@ async def process_url(update: Update, url: str) -> None:
                 if thumb_path:
                     thumb_file = open(thumb_path, "rb")
                     kwargs["thumbnail"] = thumb_file
-                await msg.reply_video(**kwargs)
-            await status_msg.delete()
+                # حتی اگر پیام اصلی کاربر (لینک) پاک شده باشه، ویدیو مستقیم به چت ارسال میشه
+                await safe_reply_video(msg, chat_id, context, **kwargs)
+            try:
+                await status_msg.delete()
+            except BadRequest:
+                pass
         except Exception as e:  # noqa: BLE001
             logger.exception("ارسال فایل شکست خورد")
-            await status_msg.edit_text(f"❌ آپلود فایل شکست خورد: {e}")
+            try:
+                await status_msg.edit_text(f"❌ آپلود فایل شکست خورد: {e}")
+            except BadRequest:
+                # حتی پیام وضعیت هم قابل ادیت نیست (مثلا پاک شده)، یه پیام جدید بفرست
+                await context.bot.send_message(chat_id=chat_id, text=f"❌ آپلود فایل شکست خورد: {e}")
         finally:
             if thumb_file:
                 try:
