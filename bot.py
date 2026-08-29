@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import re
@@ -133,8 +134,11 @@ def generate_thumbnail(video_path: str, out_dir: str) -> str | None:
     try:
         subprocess.run(
             [
-                "ffmpeg", "-y", "-i", video_path,
-                "-ss", "00:00:01", "-vframes", "1",
+                "ffmpeg", "-y",
+                # گذاشتن -ss قبل از -i یعنی seek سریع بر اساس keyframe،
+                # به‌جای decode کامل ویدیو تا اون لحظه (خیلی سریع‌تره)
+                "-ss", "00:00:01", "-i", video_path,
+                "-vframes", "1",
                 "-vf", "scale=320:-1",  # حداکثر عرض ۳۲۰px برای تلگرام
                 thumb_path
             ],
@@ -279,7 +283,9 @@ async def process_url(update: Update, context: ContextTypes.DEFAULT_TYPE, url: s
     status_msg = await safe_reply_text(msg, chat_id, context, "⏳ در حال دانلود... ممکنه کمی طول بکشه.")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        filepath, status = download_best_fitting(url, tmp_dir)
+        # دانلود توی thread جدا اجرا می‌شه تا event loop بات بلاک نشه
+        # و بات بتونه هم‌زمان به پیام‌های دیگه هم جواب بده
+        filepath, status = await asyncio.to_thread(download_best_fitting, url, tmp_dir)
 
         if status == "unsupported":
             if is_group:
@@ -302,8 +308,8 @@ async def process_url(update: Update, context: ContextTypes.DEFAULT_TYPE, url: s
             await status_msg.edit_text(f"❌ نشد دانلودش کنم.\n{status}")
             return
 
-        # Generate thumbnail
-        thumb_path = generate_thumbnail(filepath, tmp_dir)
+        # Generate thumbnail (این هم توی thread جدا، تا event loop آزاد بمونه)
+        thumb_path = await asyncio.to_thread(generate_thumbnail, filepath, tmp_dir)
         thumb_file = None
 
         try:
@@ -353,3 +359,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+        
